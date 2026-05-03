@@ -34,18 +34,19 @@ export function Player() {
   const toggleRepeat = usePlayerStore((state) => state.toggleRepeat);
 
   const [isLiked, setIsLiked] = useState(false);
-  const [lyrics, setLyrics] = useState<{ text: string }[] | null>(null);
+  const [lyrics, setLyrics] = useState<{ text: string; time?: number }[] | null>(null);
+  const [lyricsType, setLyricsType] = useState<'synced' | 'plain' | null>(null);
   const [showLyrics, setShowLyrics] = useState(false);
   const playerRef = useRef<any>(null);
   const lyricsContainerRef = useRef<HTMLDivElement>(null);
 
   // Smooth scroll lyrics
   useEffect(() => {
-    if (showLyrics && lyricsContainerRef.current && duration > 0 && lyrics && lyrics.length > 0) {
+    if (showLyrics && lyricsContainerRef.current && duration > 0 && lyrics && lyrics.length > 0 && lyricsType === 'synced') {
       const container = lyricsContainerRef.current;
-      let activeIndex = Math.floor((progress / duration) * lyrics.length);
-      if (activeIndex < 0) activeIndex = 0;
-      if (activeIndex >= lyrics.length) activeIndex = lyrics.length - 1;
+      
+      const index = lyrics.findIndex(line => line.time !== undefined && line.time > progress);
+      const activeIndex = index === -1 ? lyrics.length - 1 : Math.max(0, index - 1);
       
       const lineElements = container.querySelectorAll('.lyric-line');
       if (lineElements[activeIndex]) {
@@ -54,12 +55,13 @@ export function Player() {
         container.scrollTo({ top: targetScroll, behavior: 'smooth' });
       }
     }
-  }, [progress, duration, showLyrics, lyrics]);
+  }, [progress, duration, showLyrics, lyrics, lyricsType]);
 
   // Reset lyrics when track changes
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLyrics(null);
+    setLyricsType(null);
   }, [currentTrack?.videoId]);
 
   useEffect(() => {
@@ -70,18 +72,31 @@ export function Player() {
 
   useEffect(() => {
     if (currentTrack && showLyrics && !lyrics) {
-      fetch(`/api/lyrics?id=${currentTrack.videoId}`)
+      const artistName = Array.isArray(currentTrack.artist)
+        ? currentTrack.artist.map(a => a.name).join(', ')
+        : currentTrack.artist?.name || '';
+      
+      const queryParams = new URLSearchParams({
+        id: currentTrack.videoId,
+        title: currentTrack.name,
+        artist: artistName
+      });
+
+      fetch(`/api/lyrics?${queryParams.toString()}`)
         .then((res) => res.json())
         .then((data) => {
-          if (data.lyrics && Array.isArray(data.lyrics) && data.lyrics.length > 0) {
-            setLyrics(data.lyrics.map((line: string) => ({ text: line })));
-          } else if (data.lyrics && typeof data.lyrics === 'string') {
-            setLyrics(data.lyrics.split('\n').map((line: string) => ({ text: line })));
+          if (data.lyrics && data.lyrics.lines) {
+            setLyricsType(data.lyrics.type);
+            setLyrics(data.lyrics.lines);
           } else {
             setLyrics([{ text: "Lyrics not available for this song. 😔" }]);
+            setLyricsType('plain');
           }
         })
-        .catch(() => setLyrics([{ text: "Lyrics not available for this song. 😔" }]));
+        .catch(() => {
+          setLyrics([{ text: "Lyrics not available for this song. 😔" }]);
+          setLyricsType('plain');
+        });
     }
   }, [currentTrack, showLyrics, lyrics]);
 
@@ -389,20 +404,26 @@ export function Player() {
                     {lyrics ? (
                       <div className="flex flex-col gap-6 md:gap-8 items-start max-w-2xl mx-auto w-full">
                         {lyrics.map((line, i) => {
-                          const activeIndex = duration > 0 ? Math.floor((progress / duration) * lyrics.length) : 0;
-                          const isActive = i === activeIndex;
+                          let isActive = false;
+                          if (lyricsType === 'synced') {
+                            const index = lyrics.findIndex(l => l.time !== undefined && l.time > progress);
+                            const activeIndex = index === -1 ? lyrics.length - 1 : Math.max(0, index - 1);
+                            isActive = i === activeIndex;
+                          }
+                          
                           return (
                             <p 
                               key={i} 
                               className={cn(
                                 "lyric-line text-3xl md:text-4xl font-bold transition-all duration-700 ease-out origin-left", 
-                                isActive ? "text-white scale-[1.05]" : "text-white/30 scale-100 cursor-pointer hover:text-white/60"
+                                lyricsType === 'synced' 
+                                  ? (isActive ? "text-white scale-[1.05]" : "text-white/30 scale-100 cursor-pointer hover:text-white/60")
+                                  : "text-white/90 scale-100"
                               )}
                               onClick={() => {
-                                if (duration > 0) {
-                                  const newProgress = (i / lyrics.length) * duration;
-                                  setProgress(newProgress);
-                                  if (playerRef.current) playerRef.current.seekTo(newProgress, true);
+                                if (lyricsType === 'synced' && duration > 0 && line.time !== undefined) {
+                                  setProgress(line.time);
+                                  if (playerRef.current) playerRef.current.seekTo(line.time, true);
                                 }
                               }}
                             >
@@ -420,7 +441,7 @@ export function Player() {
                   </div>
 
                   {/* Bottom mini controls banner */}
-                  <div className="px-6 pb-10 pt-8 bg-gradient-to-t from-black via-black/90 to-transparent">
+                  <div className="px-6 pb-16 md:pb-20 pt-12 bg-gradient-to-t from-black via-black/90 to-transparent">
                     <div className="flex items-center gap-4 max-w-2xl mx-auto w-full">
                       <Image src={thumbnail} width={56} height={56} className="rounded-xl object-cover shadow-2xl" alt={currentTrack.name} />
                       <div className="flex-1 min-w-0">
