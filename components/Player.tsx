@@ -55,13 +55,15 @@ export function Player() {
       fetch(`/api/lyrics?id=${currentTrack.videoId}`)
         .then((res) => res.json())
         .then((data) => {
-          if (data.lyrics && data.lyrics.lyrics) {
-            setLyrics([{ text: data.lyrics.lyrics || data.lyrics }]);
+          if (data.lyrics && Array.isArray(data.lyrics) && data.lyrics.length > 0) {
+            setLyrics(data.lyrics.map((line: string) => ({ text: line })));
+          } else if (data.lyrics && typeof data.lyrics === 'string') {
+            setLyrics(data.lyrics.split('\n').map((line: string) => ({ text: line })));
           } else {
-            setLyrics(null);
+            setLyrics([{ text: "Lyrics not available for this song. 😔" }]);
           }
         })
-        .catch(() => setLyrics(null));
+        .catch(() => setLyrics([{ text: "Lyrics not available for this song. 😔" }]));
     }
   }, [currentTrack, showLyrics, lyrics]);
 
