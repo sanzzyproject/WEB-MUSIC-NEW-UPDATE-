@@ -5,7 +5,7 @@ import { usePlayerStore } from '@/lib/store';
 import { db } from '@/lib/db';
 import YouTube from 'react-youtube';
 import { motion, AnimatePresence } from 'motion/react';
-import { Play, Pause, SkipForward, SkipBack, Heart, ChevronDown, ListMusic, Mic2, Shuffle, Repeat, Repeat1, Maximize2, MoreVertical, Cast, ListPlus, User } from 'lucide-react';
+import { Play, Pause, SkipForward, SkipBack, Heart, ChevronDown, ListMusic, Mic2, Shuffle, Repeat, Repeat1, Maximize2, MoreVertical, Cast, ListPlus, User, Minimize2, MoreHorizontal } from 'lucide-react';
 import { cn, getHighResImage } from '@/lib/utils';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -37,6 +37,24 @@ export function Player() {
   const [lyrics, setLyrics] = useState<{ text: string }[] | null>(null);
   const [showLyrics, setShowLyrics] = useState(false);
   const playerRef = useRef<any>(null);
+  const lyricsContainerRef = useRef<HTMLDivElement>(null);
+
+  // Smooth scroll lyrics
+  useEffect(() => {
+    if (showLyrics && lyricsContainerRef.current && duration > 0 && lyrics && lyrics.length > 0) {
+      const container = lyricsContainerRef.current;
+      let activeIndex = Math.floor((progress / duration) * lyrics.length);
+      if (activeIndex < 0) activeIndex = 0;
+      if (activeIndex >= lyrics.length) activeIndex = lyrics.length - 1;
+      
+      const lineElements = container.querySelectorAll('.lyric-line');
+      if (lineElements[activeIndex]) {
+        const targetLine = lineElements[activeIndex] as HTMLElement;
+        const targetScroll = targetLine.offsetTop - container.clientHeight / 2 + targetLine.clientHeight / 2;
+        container.scrollTo({ top: targetScroll, behavior: 'smooth' });
+      }
+    }
+  }, [progress, duration, showLyrics, lyrics]);
 
   // Reset lyrics when track changes
   useEffect(() => {
@@ -352,160 +370,232 @@ export function Player() {
                 : '#121212'
             }}
           >
-            <div className="relative z-10 flex flex-col h-full p-6 pb-8">
-              {/* Header */}
-              <div className="flex justify-between items-center mb-8">
-                <button onClick={() => setExpanded(false)} className="p-2 -ml-2 text-white">
-                  <ChevronDown className="w-8 h-8" />
-                </button>
-                <div className="flex gap-4">
-                  <button className="p-2 text-white">
-                    <Cast className="w-6 h-6" />
-                  </button>
-                  <button className="p-2 -mr-2 text-white">
-                    <MoreVertical className="w-6 h-6" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Content Area */}
-              <div className="flex-1 flex flex-col justify-center min-h-0 relative">
-                {showLyrics && (
-                  <div className="absolute inset-[-50px] -z-10 overflow-hidden opacity-40 pointer-events-none">
-                    <Image src={thumbnail} alt="Background" fill className="object-cover blur-[80px] scale-110" />
-                  </div>
-                )}
-                {showLyrics ? (
-                  <div className="flex-1 overflow-y-auto no-scrollbar pb-8 z-10">
+            <AnimatePresence mode="wait">
+              {showLyrics ? (
+                <motion.div
+                  key="lyrics-view"
+                  initial={{ opacity: 0, scale: 1.05 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 1.05 }}
+                  transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                  className="absolute inset-0 z-20 flex flex-col bg-black"
+                >
+                  {/* Lyrics scrolling container */}
+                  <div 
+                    className="flex-1 overflow-y-auto no-scrollbar pt-[45vh] pb-[45vh] px-6"
+                    ref={lyricsContainerRef}
+                    style={{ maskImage: "linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)", WebkitMaskImage: "linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)" }}
+                  >
                     {lyrics ? (
-                      <div className="text-2xl font-bold leading-relaxed text-white/90 space-y-6 text-center px-4">
-                        {lyrics.map((line, i) => (
-                          <p key={i} className="whitespace-pre-wrap drop-shadow-lg">{line.text}</p>
-                        ))}
+                      <div className="flex flex-col gap-6 md:gap-8 items-start max-w-2xl mx-auto w-full">
+                        {lyrics.map((line, i) => {
+                          const activeIndex = duration > 0 ? Math.floor((progress / duration) * lyrics.length) : 0;
+                          const isActive = i === activeIndex;
+                          return (
+                            <p 
+                              key={i} 
+                              className={cn(
+                                "lyric-line text-3xl md:text-4xl font-bold transition-all duration-700 ease-out origin-left", 
+                                isActive ? "text-white scale-[1.05]" : "text-white/30 scale-100 cursor-pointer hover:text-white/60"
+                              )}
+                              onClick={() => {
+                                if (duration > 0) {
+                                  const newProgress = (i / lyrics.length) * duration;
+                                  setProgress(newProgress);
+                                  if (playerRef.current) playerRef.current.seekTo(newProgress, true);
+                                }
+                              }}
+                            >
+                              {line.text}
+                            </p>
+                          );
+                        })}
                       </div>
                     ) : (
-                      <div className="flex items-center justify-center h-full text-white/50 text-lg">
-                        Lyrics not available
+                      <div className="flex flex-col items-center justify-center gap-4 h-full">
+                        <div className="w-8 h-8 border-4 border-white/20 border-t-white rounded-full animate-spin" />
+                        <span className="text-white/50 text-xl font-medium tracking-wide">Memuat lirik...</span>
                       </div>
                     )}
                   </div>
-                ) : (
-                  <AnimatePresence mode="wait">
-                    <motion.div
-                      key={currentTrack.videoId}
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: isPlaying ? 1 : 0.95 }}
-                      exit={{ opacity: 0, scale: 0.9 }}
-                      transition={{ type: 'spring', damping: 20, stiffness: 100 }}
-                      className="w-full aspect-square rounded-xl overflow-hidden shadow-2xl mx-auto max-w-[360px]"
-                    >
-                      <Image src={thumbnail} alt={currentTrack.name} width={500} height={500} className="w-full h-full object-cover" />
-                    </motion.div>
-                  </AnimatePresence>
-                )}
-              </div>
 
-              {/* Controls Area */}
-              <div className="mt-8">
-                <div className="flex justify-between items-center mb-6">
-                  <AnimatePresence mode="wait">
-                    <motion.div 
-                      key={currentTrack.videoId}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      transition={{ duration: 0.3 }}
-                      className="min-w-0 flex-1 pr-4"
-                    >
-                      <MarqueeText text={currentTrack.name} className="text-2xl font-bold text-white mb-1" />
-                      <MarqueeText text={artistName} className="text-lg text-white/60" />
-                    </motion.div>
-                  </AnimatePresence>
-                  <div className="flex items-center gap-4">
-                    <button onClick={() => setTrackToAdd(currentTrack)} className="p-2 text-white/80 hover:text-white transition">
-                      <ListPlus className="w-7 h-7" />
-                    </button>
-                    <button onClick={handleLike} className="p-2 text-white transition">
-                      <Heart className={cn("w-7 h-7", isLiked && "fill-white")} />
-                    </button>
+                  {/* Bottom mini controls banner */}
+                  <div className="px-6 pb-10 pt-8 bg-gradient-to-t from-black via-black/90 to-transparent">
+                    <div className="flex items-center gap-4 max-w-2xl mx-auto w-full">
+                      <Image src={thumbnail} width={56} height={56} className="rounded-xl object-cover shadow-2xl" alt={currentTrack.name} />
+                      <div className="flex-1 min-w-0">
+                        <MarqueeText text={currentTrack.name} className="text-white font-bold text-lg leading-tight" />
+                        <MarqueeText text={artistName} className="text-white/60 text-sm" />
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <button onClick={() => setShowLyrics(false)} className="w-10 h-10 rounded-xl bg-white text-black hover:scale-105 transition-transform flex items-center justify-center">
+                          <Maximize2 className="w-5 h-5 shrink-0" />
+                        </button>
+                        <button className="w-10 h-10 rounded-xl bg-white text-black hover:scale-105 transition-transform flex items-center justify-center">
+                          <MoreHorizontal className="w-5 h-5 shrink-0" />
+                        </button>
+                      </div>
+                    </div>
+                    {/* Progress bar */}
+                    <div className="mt-6 flex flex-col gap-2 max-w-2xl mx-auto w-full">
+                      <input
+                        type="range"
+                        min={0}
+                        max={duration || 100}
+                        value={progress || 0}
+                        onChange={handleSeek}
+                        className="w-full h-1.5 bg-white/20 rounded-full appearance-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full cursor-pointer hover:[&::-webkit-slider-thumb]:w-4 hover:[&::-webkit-slider-thumb]:h-4"
+                      />
+                      <div className="flex justify-between text-xs text-white/50 font-mono font-medium">
+                        <span>{formatTime(progress)}</span>
+                        <span>{formatTime(duration)}</span>
+                      </div>
+                    </div>
                   </div>
-                </div>
-
-                {/* Progress Bar */}
-                <div className="mb-6">
-                  <input
-                    type="range"
-                    min={0}
-                    max={duration || 100}
-                    value={progress || 0}
-                    onChange={handleSeek}
-                    className="w-full h-1 bg-white/20 rounded-full appearance-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full"
-                  />
-                  <div className="flex justify-between text-xs text-white/50 mt-2 font-mono">
-                    <span>{formatTime(progress)}</span>
-                    <span>{formatTime(duration)}</span>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="normal-view"
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                  className="relative z-10 flex flex-col h-full p-6 pb-8"
+                >
+                  {/* Header */}
+                  <div className="flex justify-between items-center mb-8">
+                    <button onClick={() => setExpanded(false)} className="p-2 -ml-2 text-white">
+                      <ChevronDown className="w-8 h-8" />
+                    </button>
+                    <div className="flex gap-4">
+                      <button className="p-2 text-white">
+                        <Cast className="w-6 h-6" />
+                      </button>
+                      <button className="p-2 -mr-2 text-white">
+                        <MoreVertical className="w-6 h-6" />
+                      </button>
+                    </div>
                   </div>
-                </div>
 
-                {/* Playback Controls */}
-                <div className="flex justify-between items-center mb-8 px-2">
-                  <button 
-                    onClick={toggleShuffle}
-                    className={cn("transition", isShuffle ? "text-[#A78BFA]" : "text-white/80 hover:text-white")}
-                  >
-                    <Shuffle className="w-6 h-6" />
-                  </button>
-                  <button onClick={playPrev} className="text-white hover:text-white transition">
-                    <SkipBack className="w-10 h-10 fill-current" />
-                  </button>
-                  <button
-                    onClick={togglePlay}
-                    className="w-20 h-20 flex items-center justify-center bg-white text-black rounded-full hover:scale-105 transition-transform"
-                  >
-                    {isPlaying ? <Pause className="w-10 h-10 fill-current" /> : <Play className="w-10 h-10 fill-current ml-1" />}
-                  </button>
-                  <button onClick={playNext} className="text-white hover:text-white transition">
-                    <SkipForward className="w-10 h-10 fill-current" />
-                  </button>
-                  <button 
-                    onClick={toggleRepeat}
-                    className={cn("transition relative", repeatMode !== 'off' ? "text-[#A78BFA]" : "text-white/80 hover:text-white")}
-                  >
-                    {repeatMode === 'one' ? <Repeat1 className="w-6 h-6" /> : <Repeat className="w-6 h-6" />}
-                  </button>
-                </div>
+                  {/* Content Area */}
+                  <div className="flex-1 flex flex-col justify-center min-h-0 relative">
+                    <AnimatePresence mode="wait">
+                      <motion.div
+                        key={currentTrack.videoId}
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: isPlaying ? 1 : 0.95 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        transition={{ type: 'spring', damping: 20, stiffness: 100 }}
+                        className="w-full aspect-square rounded-xl overflow-hidden shadow-2xl mx-auto max-w-[360px]"
+                      >
+                        <Image src={thumbnail} alt={currentTrack.name} width={500} height={500} className="w-full h-full object-cover" />
+                      </motion.div>
+                    </AnimatePresence>
+                  </div>
 
-                {/* Bottom Actions */}
-                <div className="flex justify-between items-center px-6 py-4 bg-white/5 rounded-2xl">
-                  <button className="text-white/80 hover:text-white transition flex flex-col items-center gap-1">
-                    <ListMusic className="w-5 h-5" />
-                    <span className="text-[10px] uppercase tracking-wider">Up Next</span>
-                  </button>
-                  <button
-                    onClick={() => setShowLyrics(!showLyrics)}
-                    className={cn("transition flex flex-col items-center gap-1", showLyrics ? "text-white" : "text-white/80 hover:text-white")}
-                  >
-                    <Mic2 className="w-5 h-5" />
-                    <span className="text-[10px] uppercase tracking-wider">Lyrics</span>
-                  </button>
-                  <button 
-                    onClick={() => {
-                      const artistId = Array.isArray(currentTrack.artist) 
-                        ? currentTrack.artist[0]?.artistId 
-                        : currentTrack.artist?.artistId;
-                      if (artistId) {
-                        setExpanded(false);
-                        router.push(`/artist/${artistId}`);
-                      }
-                    }}
-                    className="text-white/80 hover:text-white transition flex flex-col items-center gap-1"
-                  >
-                    <User className="w-5 h-5" />
-                    <span className="text-[10px] uppercase tracking-wider">Lihat Artis</span>
-                  </button>
-                </div>
-              </div>
-            </div>
+                  {/* Controls Area */}
+                  <div className="mt-8">
+                    <div className="flex justify-between items-center mb-6">
+                      <AnimatePresence mode="wait">
+                        <motion.div 
+                          key={currentTrack.videoId}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          transition={{ duration: 0.3 }}
+                          className="min-w-0 flex-1 pr-4"
+                        >
+                          <MarqueeText text={currentTrack.name} className="text-2xl font-bold text-white mb-1" />
+                          <MarqueeText text={artistName} className="text-lg text-white/60" />
+                        </motion.div>
+                      </AnimatePresence>
+                      <div className="flex items-center gap-4">
+                        <button onClick={() => setTrackToAdd(currentTrack)} className="p-2 text-white/80 hover:text-white transition">
+                          <ListPlus className="w-7 h-7" />
+                        </button>
+                        <button onClick={handleLike} className="p-2 text-white transition">
+                          <Heart className={cn("w-7 h-7", isLiked && "fill-white")} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="mb-6">
+                      <input
+                        type="range"
+                        min={0}
+                        max={duration || 100}
+                        value={progress || 0}
+                        onChange={handleSeek}
+                        className="w-full h-1 bg-white/20 rounded-full appearance-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full cursor-pointer"
+                      />
+                      <div className="flex justify-between text-xs text-white/50 mt-2 font-mono">
+                        <span>{formatTime(progress)}</span>
+                        <span>{formatTime(duration)}</span>
+                      </div>
+                    </div>
+
+                    {/* Playback Controls */}
+                    <div className="flex justify-between items-center mb-8 px-2">
+                      <button 
+                        onClick={toggleShuffle}
+                        className={cn("transition", isShuffle ? "text-[#A78BFA]" : "text-white/80 hover:text-white")}
+                      >
+                        <Shuffle className="w-6 h-6" />
+                      </button>
+                      <button onClick={playPrev} className="text-white hover:text-white transition">
+                        <SkipBack className="w-10 h-10 fill-current" />
+                      </button>
+                      <button
+                        onClick={togglePlay}
+                        className="w-20 h-20 flex items-center justify-center bg-white text-black rounded-full hover:scale-105 transition-transform"
+                      >
+                        {isPlaying ? <Pause className="w-10 h-10 fill-current" /> : <Play className="w-10 h-10 fill-current ml-1" />}
+                      </button>
+                      <button onClick={playNext} className="text-white hover:text-white transition">
+                        <SkipForward className="w-10 h-10 fill-current" />
+                      </button>
+                      <button 
+                        onClick={toggleRepeat}
+                        className={cn("transition relative", repeatMode !== 'off' ? "text-[#A78BFA]" : "text-white/80 hover:text-white")}
+                      >
+                        {repeatMode === 'one' ? <Repeat1 className="w-6 h-6" /> : <Repeat className="w-6 h-6" />}
+                      </button>
+                    </div>
+
+                    {/* Bottom Actions */}
+                    <div className="flex justify-between items-center px-6 py-4 bg-white/5 rounded-2xl">
+                      <button className="text-white/80 hover:text-white transition flex flex-col items-center gap-1">
+                        <ListMusic className="w-5 h-5" />
+                        <span className="text-[10px] uppercase tracking-wider">Up Next</span>
+                      </button>
+                      <button
+                        onClick={() => setShowLyrics(true)}
+                        className="transition flex flex-col items-center gap-1 text-white/80 hover:text-white"
+                      >
+                        <Mic2 className="w-5 h-5" />
+                        <span className="text-[10px] uppercase tracking-wider">Lyrics</span>
+                      </button>
+                      <button 
+                        onClick={() => {
+                          const artistId = Array.isArray(currentTrack.artist) 
+                            ? currentTrack.artist[0]?.artistId 
+                            : currentTrack.artist?.artistId;
+                          if (artistId) {
+                            setExpanded(false);
+                            router.push(`/artist/${artistId}`);
+                          }
+                        }}
+                        className="text-white/80 hover:text-white transition flex flex-col items-center gap-1"
+                      >
+                        <User className="w-5 h-5" />
+                        <span className="text-[10px] uppercase tracking-wider">Lihat Artis</span>
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
         )}
       </AnimatePresence>
