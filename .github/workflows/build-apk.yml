@@ -5,8 +5,8 @@ on:
     branches:
       - main
     tags:
-      - 'v*' # Memicu rilis otomatis jika Anda push tag seperti v1.0.0
-  workflow_dispatch: # Memungkinkan Anda memicu build apk secara manual
+      - 'v*' # Trigger otomatis rilis saat Anda push tag rilis
+  workflow_dispatch: # Memungkinkan Anda untuk menjalankan workflow ini secara manual
 
 jobs:
   build:
@@ -16,11 +16,16 @@ jobs:
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
-
+        
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22' # Gunakan versi 22 yang belum deprecated
+          cache: 'npm'
+          
+      - name: Install Dependencies
+        # Lebih aman menggunakan install dibanding ci jika lockfile sering tidak sinkron
+        run: npm install
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -28,38 +33,36 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
           
-      - name: Create WebView Project
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Capacitor
         run: |
-          mkdir webview-app
-          cd webview-app
-          
-          # Inisialisasi package.json kosong khusus untuk Capacitor
-          npm init -y
           npm install @capacitor/core @capacitor/android
           npm install -D @capacitor/cli
+          # Buat dummy index.html agar sync capacitor tidak error karena folder public kosong
+          mkdir -p public
+          echo '<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0; url=https://web-music-new-update.vercel.app/" /></head><body></body></html>' > public/index.html
+          npx cap init SannMusic com.sannmusic.app --web-dir public
           
-          # Buat folder web dummy
-          mkdir -p www
-          echo "<html><head><meta http-equiv=\"refresh\" content=\"0; URL=https://web-music-new-update.vercel.app/\" /></head><body>Loading...</body></html>" > www/index.html
-          
-          # Inisialisasi Capacitor
-          npx cap init SannMusic com.sannmusic.app --web-dir www
-          
-          # Konfigurasi WebView untuk mengarah ke URL Vercel langsung
-          echo '{
+      - name: Configure Capacitor as WebView
+        run: |
+          cat <<EOF > capacitor.config.json
+          {
             "appId": "com.sannmusic.app",
             "appName": "SannMusic",
-            "webDir": "www",
+            "webDir": "public",
             "server": {
               "url": "https://web-music-new-update.vercel.app/",
               "cleartext": true
             }
-          }' > capacitor.config.json
-          
-          # Build Android
-          npx cap add android
+          }
+          EOF
+
+      - name: Build Android App
+        run: |
+          npx cap add android || true
           npx cap sync android
-          
           cd android
           chmod +x ./gradlew
           ./gradlew assembleDebug
@@ -68,12 +71,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: SannMusic.apk
-          path: webview-app/android/app/build/outputs/apk/debug/app-debug.apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Release to GitHub
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v1
         with:
-          files: webview-app/android/app/build/outputs/apk/debug/app-debug.apk
+          files: android/app/build/outputs/apk/debug/app-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
