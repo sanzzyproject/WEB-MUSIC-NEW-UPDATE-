@@ -45,7 +45,8 @@ export function Player() {
     if (showLyrics && lyricsContainerRef.current && duration > 0 && lyrics && lyrics.length > 0 && lyricsType === 'synced') {
       const container = lyricsContainerRef.current;
       
-      const index = lyrics.findIndex(line => line.time !== undefined && line.time > progress);
+      const LYRICS_OFFSET = 0.25; // Highlight lyrics slightly early for better rhythm feel
+      const index = lyrics.findIndex(line => line.time !== undefined && line.time > (progress + LYRICS_OFFSET));
       const activeIndex = index === -1 ? lyrics.length - 1 : Math.max(0, index - 1);
       
       const lineElements = container.querySelectorAll('.lyric-line');
@@ -150,7 +151,7 @@ export function Player() {
           const time = await playerRef.current.getCurrentTime();
           setProgress(time || 0);
         }
-      }, 100);
+      }, 50);
     }
     return () => clearInterval(interval);
   }, [isPlaying, setProgress]);
@@ -426,7 +427,8 @@ export function Player() {
                           {lyrics.map((line, i) => {
                             let isActive = false;
                             if (lyricsType === 'synced') {
-                              const index = lyrics.findIndex(l => l.time !== undefined && l.time > progress);
+                              const LYRICS_OFFSET = 0.25;
+                              const index = lyrics.findIndex(l => l.time !== undefined && l.time > (progress + LYRICS_OFFSET));
                               const activeIndex = index === -1 ? lyrics.length - 1 : Math.max(0, index - 1);
                               isActive = i === activeIndex;
                             }
@@ -435,7 +437,7 @@ export function Player() {
                               <p 
                                 key={i} 
                                 className={cn(
-                                  "lyric-line text-2xl md:text-3xl font-bold transition-all duration-700 ease-out origin-center", 
+                                  "lyric-line text-2xl md:text-3xl font-bold transition-all duration-300 ease-out origin-center", 
                                   lyricsType === 'synced' 
                                     ? (isActive ? "text-white scale-[1.05]" : "text-white/30 scale-100 cursor-pointer hover:text-white/60")
                                     : "text-white/90 scale-100"
