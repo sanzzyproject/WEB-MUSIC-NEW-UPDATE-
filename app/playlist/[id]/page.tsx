@@ -56,6 +56,16 @@ export default function PlaylistPage() {
     };
 
     loadPlaylist();
+
+    const handlePlaylistsUpdated = () => {
+      loadPlaylist();
+    };
+
+    window.addEventListener('playlistsUpdated', handlePlaylistsUpdated);
+    
+    return () => {
+      window.removeEventListener('playlistsUpdated', handlePlaylistsUpdated);
+    };
   }, [params.id]);
 
   if (loading) {

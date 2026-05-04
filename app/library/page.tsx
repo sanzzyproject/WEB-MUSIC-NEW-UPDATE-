@@ -39,6 +39,16 @@ export default function Library() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadLibrary();
+
+    const handlePlaylistsUpdated = () => {
+      loadLibrary();
+    };
+
+    window.addEventListener('playlistsUpdated', handlePlaylistsUpdated);
+    
+    return () => {
+      window.removeEventListener('playlistsUpdated', handlePlaylistsUpdated);
+    };
   }, []);
 
   const handleCreatePlaylist = async () => {
@@ -57,8 +67,10 @@ export default function Library() {
   };
 
   const handleDeletePlaylist = async (id: string) => {
-    await db.deletePlaylist(id);
-    loadLibrary();
+    if (window.confirm('Apakah Anda yakin ingin menghapus playlist ini?')) {
+      await db.deletePlaylist(id);
+      loadLibrary();
+    }
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
