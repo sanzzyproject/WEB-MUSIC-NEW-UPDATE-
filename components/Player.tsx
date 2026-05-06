@@ -37,8 +37,16 @@ export function Player() {
   const [lyrics, setLyrics] = useState<{ text: string; time?: number }[] | null>(null);
   const [lyricsType, setLyricsType] = useState<'synced' | 'plain' | null>(null);
   const [showLyrics, setShowLyrics] = useState(false);
+  const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
+  const [isAlternativeTrying, setIsAlternativeTrying] = useState(false);
+  
   const playerRef = useRef<any>(null);
   const lyricsContainerRef = useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+    setActiveVideoId(currentTrack?.videoId || null);
+    setIsAlternativeTrying(false);
+  }, [currentTrack?.videoId]);
 
   // Smooth scroll lyrics
   useEffect(() => {
@@ -142,6 +150,38 @@ export function Player() {
       }
     }
   }, [setPlaying, setDuration, playNext]);
+
+  const onError = useCallback(async (event: any) => {
+    const error = event.data;
+    console.error("YouTube Player Error:", error);
+    
+    // Error 101 or 150: embed disabled. 100: not found.
+    if ((error === 101 || error === 150 || error === 100) && currentTrack && !isAlternativeTrying) {
+      console.log("Attempting to find an alternative video...");
+      setIsAlternativeTrying(true);
+      
+      try {
+        const artistName = Array.isArray(currentTrack.artist) ? currentTrack.artist.map(a => a.name).join(' ') : currentTrack.artist?.name || '';
+        const query = `${currentTrack.name} ${artistName} audio`;
+        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&type=video`);
+        if (res.ok) {
+          const videos = await res.json();
+          // Find first video that is not the same as the current track
+          const alternativeVideo = videos.find((v: any) => v.videoId && v.videoId !== currentTrack.videoId);
+          if (alternativeVideo) {
+            console.log("Alternative video found:", alternativeVideo.videoId);
+            setActiveVideoId(alternativeVideo.videoId);
+            return;
+          }
+        }
+      } catch (err) {
+        console.error("Failed to find alternative video", err);
+      }
+    }
+    
+    // Fallback if alternative also fails or not found
+    playNext();
+  }, [currentTrack, isAlternativeTrying, playNext]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -283,20 +323,24 @@ export function Player() {
     <>
       {/* Hidden YouTube Player */}
       <div className="fixed top-[-1000px] left-[-1000px] w-[1px] h-[1px] opacity-0 pointer-events-none">
-        <YouTube
-          videoId={currentTrack.videoId}
-          opts={{
-            height: '1',
-            width: '1',
-            playerVars: {
-              autoplay: 1,
-              controls: 0,
-              playsinline: 1,
-            },
-          }}
-          onReady={onReady}
-          onStateChange={onStateChange}
-        />
+        {activeVideoId && (
+          <YouTube
+            videoId={activeVideoId}
+            opts={{
+              height: '1',
+              width: '1',
+              playerVars: {
+                autoplay: 1,
+                controls: 0,
+                playsinline: 1,
+                origin: typeof window !== 'undefined' ? window.location.origin : 'https://www.youtube.com',
+              },
+            }}
+            onReady={onReady}
+            onStateChange={onStateChange}
+            onError={onError}
+          />
+        )}
       </div>
 
       {/* Mini Player */}
