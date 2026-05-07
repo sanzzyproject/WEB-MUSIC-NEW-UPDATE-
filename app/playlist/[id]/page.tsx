@@ -36,7 +36,7 @@ export default function PlaylistPage() {
           setIsSaved(true);
         } else {
           // Try fetching from YouTube Music API
-          const res = await fetch(`/api/ytplaylist?id=${id}`);
+          const res = await fetch(`/api/ytplaylist?id=${encodeURIComponent(id)}`);
           if (res.ok) {
             const ytData = await res.json();
             setPlaylist({

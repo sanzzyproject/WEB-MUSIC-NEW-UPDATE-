@@ -19,8 +19,11 @@ export default function Library() {
   const [subscribedArtists, setSubscribedArtists] = useState<SubscribedArtist[]>([]);
   const [activeTab, setActiveTab] = useState('Daftar putar');
   const [showCreate, setShowCreate] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [newPlaylistImg, setNewPlaylistImg] = useState('');
+  const [importUrl, setImportUrl] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
   const playTrack = usePlayerStore((state) => state.playTrack);
 
   const tabs = ['Daftar putar', 'Lagu', 'Album', 'Artis', 'Podcasts'];
@@ -81,6 +84,97 @@ export default function Library() {
         setNewPlaylistImg(reader.result as string);
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  const extractPlaylistId = (url: string) => {
+    try {
+      const parsedUrl = new URL(url);
+      return parsedUrl.searchParams.get('list');
+    } catch {
+      return url; // fallback to treating the input itself as ID
+    }
+  };
+
+  const handleImportPlaylistUrl = async () => {
+    if (!importUrl.trim()) return;
+    setIsImporting(true);
+    
+    try {
+      const listId = extractPlaylistId(importUrl);
+      if (!listId) {
+        alert('Invalid playlist URL atau ID tidak ditemukan.');
+        return;
+      }
+
+      const res = await fetch(`/api/ytplaylist?id=${encodeURIComponent(listId)}`);
+      if (!res.ok) throw new Error('Failed to fetch playlist');
+      
+      const data = await res.json();
+      
+      const newPlaylist = {
+        id: Date.now().toString(),
+        name: data.name || data.title || 'Imported Playlist',
+        img: data.thumbnails?.[data.thumbnails.length - 1]?.url || 'https://picsum.photos/seed/playlist/200/200',
+        tracks: data.videos || data.tracks || [],
+      };
+      
+      await db.addPlaylist(newPlaylist);
+      setShowImport(false);
+      setImportUrl('');
+      loadLibrary();
+      alert('Playlist berhasil diimpor!');
+    } catch (error) {
+      console.error(error);
+      alert('Gagal mengimpor playlist. Pastikan link valid dan dapat diakses publik.');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleImportJson = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setIsImporting(true);
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        try {
+          const data = JSON.parse(reader.result as string);
+          
+          let tracks = [];
+          let name = 'Imported JSON Playlist';
+          let img = 'https://picsum.photos/seed/playlist/200/200';
+          
+          if (Array.isArray(data)) {
+             tracks = data;
+          } else if (data.tracks || data.videos) {
+             tracks = data.tracks || data.videos;
+             name = data.name || data.title || name;
+             if (data.thumbnails && data.thumbnails.length > 0) {
+                 img = data.thumbnails[data.thumbnails.length - 1].url;
+             } else if (data.img) {
+                 img = data.img;
+             }
+          }
+          
+          const newPlaylist = {
+            id: Date.now().toString(),
+            name,
+            img,
+            tracks: tracks,
+          };
+          
+          await db.addPlaylist(newPlaylist);
+          setShowImport(false);
+          loadLibrary();
+          alert('Playlist berhasil diimpor dari file JSON!');
+        } catch (err) {
+          alert('Format JSON tidak valid atau gagal dibaca.');
+        } finally {
+          setIsImporting(false);
+        }
+      };
+      reader.readAsText(file);
     }
   };
 
@@ -183,6 +277,18 @@ export default function Library() {
             </div>
           </button>
 
+          <button
+            onClick={() => setShowImport(true)}
+            className="flex items-center gap-4 p-3 hover:bg-white/5 rounded-xl cursor-pointer transition-colors w-full text-left"
+          >
+            <div className="w-12 h-12 bg-white/10 rounded-lg flex items-center justify-center shrink-0">
+              <UploadCloud className="w-6 h-6 text-white" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-white font-medium">Impor Playlist</h3>
+            </div>
+          </button>
+
           {playlists.map((pl) => (
             <div 
               key={pl.id} 
@@ -210,9 +316,38 @@ export default function Library() {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
+                  const cleanPl = {
+                    id: pl.id,
+                    name: pl.name,
+                    img: pl.img,
+                    tracks: pl.tracks?.map((t: any) => ({
+                      videoId: t.videoId,
+                      name: t.name,
+                      artist: t.artist,
+                      duration: t.duration,
+                      thumbnails: t.thumbnails
+                    })) || []
+                  };
+                  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(cleanPl));
+                  const downloadAnchorNode = document.createElement('a');
+                  downloadAnchorNode.setAttribute("href", dataStr);
+                  downloadAnchorNode.setAttribute("download", `${pl.name}.json`);
+                  document.body.appendChild(downloadAnchorNode);
+                  downloadAnchorNode.click();
+                  downloadAnchorNode.remove();
+                }}
+                className="p-2 text-white/50 hover:text-white transition-all"
+                title="Ekspor Playlist"
+              >
+                <Download className="w-5 h-5" />
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
                   handleDeletePlaylist(pl.id);
                 }}
                 className="p-2 text-white/50 hover:text-red-500 transition-all"
+                title="Hapus Playlist"
               >
                 <Trash2 className="w-5 h-5" />
               </button>
@@ -348,6 +483,59 @@ export default function Library() {
                 Create
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Import Playlist Modal */}
+      {showImport && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#1C1C1E] rounded-2xl p-6 w-full max-w-sm border border-white/10">
+            <h2 className="text-xl font-bold text-white mb-6">Impor Playlist</h2>
+            
+            <div className="mb-6">
+              <label className="block text-sm text-white/70 mb-2">Impor dari YouTube (Link / ID)</label>
+              <input
+                type="text"
+                value={importUrl}
+                onChange={(e) => setImportUrl(e.target.value)}
+                placeholder="https://youtube.com/playlist?list=..."
+                className="w-full bg-black text-white rounded-xl py-3 px-4 mb-3 focus:outline-none focus:ring-1 focus:ring-white/30 border border-white/10"
+                disabled={isImporting}
+              />
+              <button
+                onClick={handleImportPlaylistUrl}
+                disabled={!importUrl.trim() || isImporting}
+                className="w-full py-3 rounded-xl font-semibold text-black bg-white hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {isImporting ? 'Mengimpor...' : 'Impor dari URL'}
+              </button>
+            </div>
+
+            <div className="relative flex items-center py-2 mb-6 text-white/30 text-sm">
+              <div className="flex-grow border-t border-white/10"></div>
+              <span className="flex-shrink-0 mx-4">ATAU</span>
+              <div className="flex-grow border-t border-white/10"></div>
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm text-white/70 mb-2">Impor dari File JSON</label>
+              <label className="w-full flex items-center justify-center py-3 rounded-xl font-semibold text-white bg-white/10 hover:bg-white/20 cursor-pointer transition-colors border border-dashed border-white/20">
+                <UploadCloud className="w-5 h-5 mr-2" />
+                {isImporting ? 'Mengimpor...' : 'Pilih File JSON'}
+                <input type="file" accept=".json" onChange={handleImportJson} className="hidden" disabled={isImporting} />
+              </label>
+            </div>
+
+            <button
+              onClick={() => {
+                setShowImport(false);
+                setImportUrl('');
+              }}
+              disabled={isImporting}
+              className="w-full py-3 rounded-xl font-semibold text-white bg-white/5 hover:bg-white/10 transition-colors"
+            >
+              Batal
+            </button>
           </div>
         </div>
       )}

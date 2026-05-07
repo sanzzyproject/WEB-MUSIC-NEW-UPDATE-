@@ -3,11 +3,14 @@ import { getYTMusic } from '@/lib/ytmusic';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const id = searchParams.get('id');
-
-  if (!id || id === 'undefined' || id === 'null') {
+  const rawId = searchParams.get('id');
+  
+  if (!rawId || rawId === 'undefined' || rawId === 'null') {
     return NextResponse.json({ error: 'Missing or invalid id' }, { status: 400 });
   }
+
+  // Prepend VL to RD lists to prevent 400 bad request errors
+  const id = rawId.startsWith('RD') ? `VL${rawId}` : rawId;
 
   try {
     const ytmusic = await getYTMusic();
