@@ -9,6 +9,7 @@ import Image from 'next/image';
 import { TrackItem } from '@/components/TrackItem';
 import { PlaylistSkeleton } from '@/components/PlaylistSkeleton';
 import { MarqueeText } from '@/components/MarqueeText';
+import { ConfirmModal } from '@/components/FeedbackModals';
 
 interface Playlist {
   id: string;
@@ -23,6 +24,9 @@ export default function PlaylistPage() {
   const [playlist, setPlaylist] = useState<Playlist | null>(null);
   const [loading, setLoading] = useState(true);
   const [isSaved, setIsSaved] = useState(false);
+  const [deletePlaylistTarget, setDeletePlaylistTarget] = useState(false);
+  const [removeSongTarget, setRemoveSongTarget] = useState<Track | null>(null);
+  const [savePlaylistTarget, setSavePlaylistTarget] = useState(false);
   const playTrack = usePlayerStore((state) => state.playTrack);
 
   useEffect(() => {
@@ -94,31 +98,47 @@ export default function PlaylistPage() {
   };
 
   const handleDeletePlaylist = async () => {
-    if (confirm('Apakah Anda yakin ingin menghapus playlist ini?')) {
+    setDeletePlaylistTarget(true);
+  };
+
+  const confirmDeletePlaylist = async () => {
+    if (playlist) {
       await db.deletePlaylist(playlist.id);
       router.back();
     }
   };
 
   const handleRemoveSong = async (trackToRemove: Track) => {
-    if (confirm('Hapus lagu ini dari playlist?')) {
-      const updatedTracks = playlist.tracks.filter(t => t.videoId !== trackToRemove.videoId);
-      const updatedPlaylist = { ...playlist, tracks: updatedTracks };
-      await db.addPlaylist(updatedPlaylist);
-      setPlaylist(updatedPlaylist);
+    setRemoveSongTarget(trackToRemove);
+  };
+
+  const confirmRemoveSong = async () => {
+    if (playlist && removeSongTarget) {
+        const updatedTracks = playlist.tracks.filter(t => t.videoId !== removeSongTarget.videoId);
+        const updatedPlaylist = { ...playlist, tracks: updatedTracks };
+        await db.addPlaylist(updatedPlaylist);
+        setPlaylist(updatedPlaylist);
+        setRemoveSongTarget(null);
     }
   };
 
   const handleSavePlaylist = async () => {
     if (isSaved) {
-      if (confirm('Apakah Anda yakin ingin menghapus playlist ini dari koleksi?')) {
+      setSavePlaylistTarget(true);
+    } else {
+      if (playlist) {
+        await db.addPlaylist(playlist);
+        setIsSaved(true);
+      }
+    }
+  };
+
+  const confirmSavePlaylist = async () => {
+      if (playlist) {
         await db.deletePlaylist(playlist.id);
         setIsSaved(false);
       }
-    } else {
-      await db.addPlaylist(playlist);
-      setIsSaved(true);
-    }
+      setSavePlaylistTarget(false);
   };
 
   const isSelfCreated = /^\d+$/.test(playlist.id);
@@ -198,6 +218,30 @@ export default function PlaylistPage() {
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        isOpen={deletePlaylistTarget}
+        title="Hapus Playlist"
+        message="Apakah Anda yakin ingin menghapus playlist ini?"
+        onConfirm={confirmDeletePlaylist}
+        onCancel={() => setDeletePlaylistTarget(false)}
+      />
+
+      <ConfirmModal
+        isOpen={!!removeSongTarget}
+        title="Hapus Lagu"
+        message="Hapus lagu ini dari playlist?"
+        onConfirm={confirmRemoveSong}
+        onCancel={() => setRemoveSongTarget(null)}
+      />
+
+      <ConfirmModal
+        isOpen={savePlaylistTarget}
+        title="Hapus dari Koleksi"
+        message="Apakah Anda yakin ingin menghapus playlist ini dari koleksi?"
+        onConfirm={confirmSavePlaylist}
+        onCancel={() => setSavePlaylistTarget(false)}
+      />
     </main>
   );
 }

@@ -10,6 +10,7 @@ import Image from 'next/image';
 import { usePlayerStore } from '@/lib/store';
 import { motion } from 'motion/react';
 import { MarqueeText } from '@/components/MarqueeText';
+import { ConfirmModal, AlertModal } from '@/components/FeedbackModals';
 
 export default function Library() {
   const router = useRouter();
@@ -24,6 +25,8 @@ export default function Library() {
   const [newPlaylistImg, setNewPlaylistImg] = useState('');
   const [importUrl, setImportUrl] = useState('');
   const [isImporting, setIsImporting] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [alertMessage, setAlertMessage] = useState<{ title?: string, message: string } | null>(null);
   const playTrack = usePlayerStore((state) => state.playTrack);
 
   const tabs = ['Daftar putar', 'Lagu', 'Album', 'Artis', 'Podcasts'];
@@ -70,9 +73,14 @@ export default function Library() {
   };
 
   const handleDeletePlaylist = async (id: string) => {
-    if (window.confirm('Apakah Anda yakin ingin menghapus playlist ini?')) {
-      await db.deletePlaylist(id);
+    setDeleteTarget(id);
+  };
+
+  const confirmDelete = async () => {
+    if (deleteTarget) {
+      await db.deletePlaylist(deleteTarget);
       loadLibrary();
+      setDeleteTarget(null);
     }
   };
 
@@ -103,7 +111,8 @@ export default function Library() {
     try {
       const listId = extractPlaylistId(importUrl);
       if (!listId) {
-        alert('Invalid playlist URL atau ID tidak ditemukan.');
+        setAlertMessage({ title: 'Gagal', message: 'Invalid playlist URL atau ID tidak ditemukan.' });
+        setIsImporting(false);
         return;
       }
 
@@ -123,10 +132,10 @@ export default function Library() {
       setShowImport(false);
       setImportUrl('');
       loadLibrary();
-      alert('Playlist berhasil diimpor!');
+      setAlertMessage({ title: 'Sukses', message: 'Playlist berhasil diimpor!' });
     } catch (error) {
       console.error(error);
-      alert('Gagal mengimpor playlist. Pastikan link valid dan dapat diakses publik.');
+      setAlertMessage({ title: 'Gagal', message: 'Gagal mengimpor playlist. Pastikan link valid dan dapat diakses publik.' });
     } finally {
       setIsImporting(false);
     }
@@ -167,9 +176,9 @@ export default function Library() {
           await db.addPlaylist(newPlaylist);
           setShowImport(false);
           loadLibrary();
-          alert('Playlist berhasil diimpor dari file JSON!');
+          setAlertMessage({ title: 'Sukses', message: 'Playlist berhasil diimpor dari file JSON!' });
         } catch (err) {
-          alert('Format JSON tidak valid atau gagal dibaca.');
+          setAlertMessage({ title: 'Gagal', message: 'Format JSON tidak valid atau gagal dibaca.' });
         } finally {
           setIsImporting(false);
         }
@@ -539,6 +548,21 @@ export default function Library() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={!!deleteTarget}
+        title="Hapus Playlist"
+        message="Apakah Anda yakin ingin menghapus playlist ini?"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
+
+      <AlertModal
+        isOpen={!!alertMessage}
+        title={alertMessage?.title}
+        message={alertMessage?.message || ''}
+        onClose={() => setAlertMessage(null)}
+      />
     </main>
   );
 }
